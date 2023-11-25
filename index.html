@@ -1,0 +1,103 @@
+<input type="file" id="f1">
+<input type="file" id="f2">
+<input id="range" value="0.2">
+<button onclick="fn()">合成</button>
+<div id="div"></div>
+<script>
+window.onerror = window.onunhandledrejection = function (e){
+    div.innerHTML = e.reason || e
+}
+!(function(self) {
+  var min = Math.min,
+      max = Math.max;
+  var setString = function(view, offset, str) {
+    var len = str.length;
+    for (var i = 0; i < len; ++i)
+      view.setUint8(offset + i, str.charCodeAt(i));
+  };
+
+  var Encoder = function(sampleRate, numChannels) {
+    this.sampleRate = sampleRate;
+    this.numChannels = numChannels;
+    this.numSamples = 0;
+    this.dataViews = [];
+  };
+
+  Encoder.prototype.encode = function(buffer) {
+    var len = buffer[0].length,
+        nCh = this.numChannels,
+        view = new DataView(new ArrayBuffer(len * nCh * 2)),
+        offset = 0;
+    for (var i = 0; i < len; ++i)
+      for (var ch = 0; ch < nCh; ++ch) {
+        var x = buffer[ch][i] * 0x7fff;
+        view.setInt16(offset, x < 0 ? max(x, -0x8000) : min(x, 0x7fff), true);
+        offset += 2;
+      }
+    this.dataViews.push(view);
+    this.numSamples += len;
+  };
+
+  Encoder.prototype.finish = function(mimeType) {
+    var dataSize = this.numChannels * this.numSamples * 2,
+        view = new DataView(new ArrayBuffer(44));
+    setString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    setString(view, 8, 'WAVE');
+    setString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, this.numChannels, true);
+    view.setUint32(24, this.sampleRate, true);
+    view.setUint32(28, this.sampleRate * 4, true);
+    view.setUint16(32, this.numChannels * 2, true);
+    view.setUint16(34, 16, true);
+    setString(view, 36, 'data');
+    view.setUint32(40, dataSize, true);
+    this.dataViews.unshift(view);
+    var blob = new Blob(this.dataViews, { type: 'audio/wav' });
+    this.cleanup();
+    return blob;
+  };
+
+  Encoder.prototype.cancel = Encoder.prototype.cleanup = function() {
+    delete this.dataViews;
+  };
+
+  self.WavEncoder = Encoder;
+})(self);
+function fn() {
+    if(!f1.value && !f2.value) return
+    var e = new FileReader();
+    e.onload = function(){
+        var audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        audioContext.decodeAudioData(e.result, function(buffer) {
+            var e = new FileReader();
+            e.onload = function(){
+                  var audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                  audioContext.decodeAudioData(e.result, function(buffer1) {
+                  var newBuffer = audioContext.createBuffer(2, buffer.length, audioContext.sampleRate);
+                  var leftChannel = buffer.getChannelData(0);
+                  var ttt = buffer1.getChannelData(0);
+                  var rightChannel = new Float32Array(leftChannel.length);
+                  for (var i = 0; i < leftChannel.length; i++) {
+                      rightChannel[i] = -leftChannel[i] + (ttt[i]*range.value||0);
+                  }
+                  newBuffer.getChannelData(0).set(leftChannel);
+                  newBuffer.getChannelData(1).set(rightChannel);
+                  var encoder = new WavEncoder(audioContext.sampleRate,2);
+                  encoder.encode([newBuffer.getChannelData(0), newBuffer.getChannelData(1)]);
+                  var wavData = encoder.finish()
+                  var a = document.createElement('a');
+                  a.href = URL.createObjectURL(wavData);
+                  a.download = 'output.wav'
+                  a.click();
+                });
+            }
+            e.readAsArrayBuffer(f2.files[0])
+        });
+    }
+    e.readAsArrayBuffer(f1.files[0])
+}
+
+</script>
