@@ -82,7 +82,6 @@ function fn() {
                   var rightChannel = new Float32Array(leftChannel.length);
                   for (var i = 0; i < leftChannel.length; i++) {
                       rightChannel[i] = -leftChannel[i] + (ttt[i]*range.value||0);
-                      leftChannel[i] += (ttt[i]*range.value||0)
                   }
                   newBuffer.getChannelData(0).set(leftChannel);
                   newBuffer.getChannelData(1).set(rightChannel);
